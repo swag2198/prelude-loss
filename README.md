@@ -81,7 +81,7 @@ python analysis/doc_scores.py --dir $R --base iter_0432000     # also rank by lo
 python dashboard/build_dashboard.py --dir $R                   # one HTML per analysis
 ```
 
-Per document: `mean` loss, `win` (worst `--window`-token mean, default 32) and `max` (worst token); with `--base`, the same on the per-token change (`d_mean`, `d_win`, `d_max`). Each document's first token (and the one after `<bos>`) is excluded, since it only measures the document boundary. A dashboard is a single self-contained HTML file: a strip plot per `--group-by` field, a sortable table, and a token-level loss view of the top `--detail` documents per metric.
+Per document: `mean` loss, `win` (worst `--window`-token mean, default 32) and `max` (worst token); with `--base`, the same on the per-token change (`d_mean`, `d_win`, `d_max`). Each document's first token (and the one after `<bos>`) is excluded, since it only measures the document boundary. A dashboard is a single self-contained HTML file: a strip plot per `--group-by` field, a sortable table, and a token-level loss view of every document (above `--max-embed-tokens`, default 300k, only the top `--detail` per metric plus the `--per-group` highest and lowest of each group).
 
 To test the pipeline without a GPU, any Qwen3 model works in place of Prelude, e.g. `--repo Qwen/Qwen3-0.6B-Base --revisions main`.
 

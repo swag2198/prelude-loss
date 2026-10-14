@@ -11,8 +11,9 @@ i.e. how much each doc got worse since REV (``d_mean``, ``d_win``, ``d_max``).
 
 Writes ``<dir>/analysis/<revision>[_vs_<base>]/``:
   doc_scores.csv   one row per doc: metadata + metrics
-  details.json     the same plus token-level losses of the top ``--detail`` docs per metric
-                   (input for ``dashboard/build_dashboard.py``)
+  details.json     the same plus token-level losses (input for ``dashboard/build_dashboard.py``) of every
+                   doc if they total at most ``--max-embed-tokens``; otherwise of the top ``--detail``
+                   docs per metric plus the ``--per-group`` highest and lowest of every group
 """
 
 import argparse
@@ -33,7 +34,9 @@ def parse_args():
     p.add_argument("--base", help="revision to subtract for the d_* metrics")
     p.add_argument("--window", type=int, default=32, help="tokens per window for the 'win' metric")
     p.add_argument("--group-by", default="category", help="docs.jsonl field that groups docs")
-    p.add_argument("--detail", type=int, default=40, help="docs per metric with token-level losses in details.json")
+    p.add_argument("--max-embed-tokens", type=int, default=300_000, help="embed token views of all docs up to this many tokens")
+    p.add_argument("--detail", type=int, default=40, help="over the budget: top docs per metric with token views")
+    p.add_argument("--per-group", type=int, default=3, help="over the budget: highest and lowest docs per group and metric")
     p.add_argument("--max-view-tokens", type=int, default=6000, help="longer docs are cut around their worst window")
     p.add_argument("--tokenizer", help="default: the repo in eval_config.json")
     return p.parse_args()
@@ -92,6 +95,21 @@ def token_pieces(tokenizer, ids, ctx=8):
     return pieces
 
 
+def select_detail_docs(rows, rev, metric_names, args):
+    """Docs that get a token-level view: all of them if they fit the budget, otherwise the top
+    ``--detail`` per metric plus the ``--per-group`` highest and lowest of every group per metric."""
+    if sum(min(row["n_tokens"], args.max_view_tokens) for row in rows) <= args.max_embed_tokens:
+        return {row["doc"] for row in rows}
+    ids = set()
+    for m in metric_names:
+        ranked = sorted((row for row in rows if row["scores"][rev][m] is not None), key=lambda row: -row["scores"][rev][m])
+        ids.update(row["doc"] for row in ranked[: args.detail])
+        for g in {row["group"] for row in ranked}:
+            in_group = [row["doc"] for row in ranked if row["group"] == g]
+            ids.update(in_group[: args.per_group] + in_group[-args.per_group :])
+    return ids
+
+
 def r(x, nd=3):
     return None if x is None or (isinstance(x, float) and math.isnan(x)) else round(x, nd)
 
@@ -119,10 +137,7 @@ def score_revision(rev, base, flat, tokens, docs, tokenizer, args):
                      "preview": tokenizer.decode(tokens[a : min(b, a + 48)], skip_special_tokens=True)[:160],
                      "scores": {rev: scores}})
 
-    detail_ids = set()
-    for m in metric_names:
-        ranked = sorted((row for row in rows if row["scores"][rev][m] is not None), key=lambda row: -row["scores"][rev][m])
-        detail_ids.update(row["doc"] for row in ranked[: args.detail])
+    detail_ids = select_detail_docs(rows, rev, metric_names, args)
     details = {}
     for d in docs:
         if d["doc"] not in detail_ids:

@@ -70,3 +70,13 @@ def test_default_dataset_name_and_slug():
     local = Namespace(data=Path("x/mixed-docs.jsonl"), num_seqs=8, seq_len=2048)
     assert default_dataset_name(local) == "mixed-docs_8x2048"
     assert slug("openeurollm/prelude".replace("/", "__")) == "openeurollm__prelude"
+
+
+def test_select_detail_docs_budget_and_group_extremes():
+    from analysis.doc_scores import select_detail_docs
+    rows = [{"doc": i, "group": "a" if i < 10 else "b", "n_tokens": 100, "scores": {"r": {"mean": float(i)}}} for i in range(20)]
+    args = Namespace(max_view_tokens=6000, max_embed_tokens=10_000, detail=2, per_group=1)
+    assert select_detail_docs(rows, "r", ["mean"], args) == set(range(20))   # 2000 tokens fit the budget
+    args.max_embed_tokens = 500
+    # top-2 overall (19, 18) + highest/lowest of group a (9, 0) and group b (19, 10)
+    assert select_detail_docs(rows, "r", ["mean"], args) == {19, 18, 9, 0, 10}

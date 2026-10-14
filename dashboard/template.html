@@ -270,7 +270,7 @@ function drawViewer() {
   const meta = Object.entries(r.meta).map(([k, v]) => `<span>${esc(k)}: <b>${esc(String(v))}</b></span>`).join("");
   const scores = D.metrics.map(m => `<span>${esc(LABEL[m])}: <b>${fmt(score(r, m))}</b></span>`).join("");
   let h = `<h2>doc ${r.doc} · ${esc(r.group)} · ${r.n_tokens} tokens${r.truncated ? " (cut by the eval-set length)" : ""}</h2><div class="meta">${meta}</div><div class="meta">${scores}</div>`;
-  if (!det) { host.innerHTML = h + `<div class="empty">No token view embedded for this document (it is not among the top documents of any metric). Rerun doc_report.py with a larger --detail.</div>`; return; }
+  if (!det) { host.innerHTML = h + `<div class="empty">No token view embedded for this document. Rerun analysis/doc_scores.py with a larger --max-embed-tokens, --detail or --per-group, then dashboard/build_dashboard.py.</div>`; return; }
   const L = det.loss[state.rev], B = D.base ? det.loss[D.base] : null;
   const vals = L.map((v, i) => delta ? (v == null || B[i] == null ? null : v - B[i]) : v);
   const edges = delta ? DELTA_EDGES : ABS_EDGES;
