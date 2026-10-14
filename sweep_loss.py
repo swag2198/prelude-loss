@@ -7,6 +7,7 @@ as in pretraining) and cached, so every checkpoint sees exactly the same tokens.
 
 Outputs in ``--out``:
   eval_tokens.pt            LongTensor [n_seqs, seq_len], the fixed eval set
+  docs.jsonl                one row per doc: [start, end) in the flattened tokens, plus its metadata
   losses/<revision>.pt      float16 [n_seqs, seq_len - 1], per-token loss (nats)
   summary.jsonl / .csv      one row per checkpoint: mean loss, perplexity, timings
 """
@@ -76,33 +77,48 @@ def select_revisions(args):
     return [f"iter_{i:07d}" for i in chosen]
 
 
-def iter_texts(args):
+def iter_docs(args):
+    """Yield (text, metadata) pairs; metadata is every other short scalar field of the row."""
     if args.data:
         if args.data.suffix == ".jsonl":
             with open(args.data) as f:
                 for line in f:
-                    yield json.loads(line)[args.text_field]
+                    row = json.loads(line)
+                    yield row[args.text_field], doc_meta(row, args.text_field)
         else:
-            yield args.data.read_text()
+            yield args.data.read_text(), {"source": args.data.name}
         return
     from datasets import load_dataset
 
     for row in load_dataset(args.hf_dataset, args.hf_config, split=args.hf_split, streaming=True):
-        yield row[args.text_field]
+        yield row[args.text_field], doc_meta(row, args.text_field)
+
+
+def doc_meta(row, text_field, max_len=200):
+    return {k: v[:max_len] if isinstance(v, str) else v for k, v in row.items()
+            if k != text_field and isinstance(v, (str, int, float, bool))}
 
 
 def build_eval_tokens(tokenizer, args):
+    """Pack docs into sequences; also return each doc's [start, end) span in the flattened tokens."""
     need = args.num_seqs * args.seq_len
-    buf = []
-    for text in iter_texts(args):
+    buf, docs = [], []
+    for text, meta in iter_docs(args):
+        start = len(buf)
         buf.extend(tokenizer(text)["input_ids"])  # prepends <bos>
         buf.append(tokenizer.eos_token_id)
+        docs.append({"doc": len(docs), "start": start, "end": len(buf), **meta})
         if len(buf) >= need:
             break
     n = min(len(buf) // args.seq_len, args.num_seqs)
     if n == 0:
         raise SystemExit(f"eval text has {len(buf)} tokens, fewer than one sequence of {args.seq_len}")
-    return torch.tensor(buf[: n * args.seq_len]).view(n, args.seq_len)
+    total = n * args.seq_len
+    docs = [d for d in docs if d["start"] < total]
+    for d in docs:  # the packed tokens end mid-doc; record the cut
+        d["truncated"] = d["end"] > total
+        d["end"] = min(d["end"], total)
+    return torch.tensor(buf[:total]).view(n, args.seq_len), docs
 
 
 def load_eval_tokens(args, revision):
@@ -112,11 +128,14 @@ def load_eval_tokens(args, revision):
         print(f"reusing {path}: {tuple(tokens.shape)}")
         return tokens
     tokenizer = AutoTokenizer.from_pretrained(args.repo, revision=revision)
-    tokens = build_eval_tokens(tokenizer, args)
+    tokens, docs = build_eval_tokens(tokenizer, args)
     torch.save(tokens, path)
+    with open(args.out / "docs.jsonl", "w") as f:
+        f.writelines(json.dumps(d) + "\n" for d in docs)
     source = str(args.data) if args.data else f"{args.hf_dataset}/{args.hf_config}:{args.hf_split}"
     (args.out / "eval_config.json").write_text(json.dumps(
-        {"source": source, "tokenizer_revision": revision, "shape": list(tokens.shape)}, indent=2))
+        {"source": source, "repo": args.repo, "tokenizer_revision": revision, "shape": list(tokens.shape),
+         "n_docs": len(docs)}, indent=2))
     print(f"built {path} from {source}: {tuple(tokens.shape)}")
     return tokens
 

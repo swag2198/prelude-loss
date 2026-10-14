@@ -57,6 +57,19 @@ The tokens are cached in `<out>/eval_tokens.pt` on the first run and reused afte
 | `eval_tokens.pt` | int64 `[n_seqs, seq_len]` eval tokens |
 | `eval_config.json` | data source and shape |
 
+`docs.jsonl` records each document's `[start, end)` in the flattened `eval_tokens.pt` plus its metadata (every other short field of the input row, e.g. `category`), so losses can be traced back to documents.
+
+## Ranking documents (`doc_report.py`)
+
+```bash
+python doc_report.py --out prelude_sweep                           # every checkpoint in losses/
+python doc_report.py --out prelude_sweep --base iter_0432000       # also rank by loss increase since iter_0432000
+```
+
+Per document and checkpoint: `mean` loss, `win` (worst `--window`-token mean, default 32) and `max` (worst token); with `--base`, the same on the per-token change (`d_mean`, `d_win`, `d_max`). Each document's first token (and the one after `<bos>`) is excluded, since it only measures the document boundary. Writes `<out>/doc_scores.csv` and `<out>/dashboard.html` (self-contained: strip plot per `--group-by` field, sortable table, token-level loss view of the top `--detail` documents per metric).
+
+To test the pipeline without a GPU, any Qwen3 model works in place of Prelude, e.g. `--repo Qwen/Qwen3-0.6B-Base --revisions main`.
+
 ```python
 import torch
 tokens = torch.load("prelude_sweep/eval_tokens.pt")

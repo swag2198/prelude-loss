@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Document losses</title>
+<style>
+.viz-root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface-1: #fcfcfb; --text-primary: #0b0b0b; --text-secondary: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --series-1: #2a78d6; --hover: rgba(11,11,11,0.05);
+  --s0: transparent; --s1: #cde2fb; --s2: #b7d3f6; --s3: #9ec5f4; --s4: #86b6ef; --s5: #6da7ec; --s6: #3987e5; --s7: #256abf; --s8: #104281;
+  --d-mid: #f0efec; --dn3: #256abf; --dn2: #6da7ec; --dn1: #b7d3f6; --up1: #f6c4c3; --up2: #ec8b8a; --up3: #d03b3b;
+}
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) .viz-root {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface-1: #1a1a19; --text-primary: #ffffff; --text-secondary: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --series-1: #3987e5; --hover: rgba(255,255,255,0.06);
+    --s1: #104281; --s2: #184f95; --s3: #1c5cab; --s4: #256abf; --s5: #2a78d6; --s6: #5598e7; --s7: #86b6ef; --s8: #cde2fb;
+    --d-mid: #383835; --dn3: #86b6ef; --dn2: #3987e5; --dn1: #184f95; --up1: #6b2a2a; --up2: #b04545; --up3: #e66767;
+  }
+}
+:root[data-theme="dark"] .viz-root {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface-1: #1a1a19; --text-primary: #ffffff; --text-secondary: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --series-1: #3987e5; --hover: rgba(255,255,255,0.06);
+  --s1: #104281; --s2: #184f95; --s3: #1c5cab; --s4: #256abf; --s5: #2a78d6; --s6: #5598e7; --s7: #86b6ef; --s8: #cde2fb;
+  --d-mid: #383835; --dn3: #86b6ef; --dn2: #3987e5; --dn1: #184f95; --up1: #6b2a2a; --up2: #b04545; --up3: #e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.viz-root { background: var(--page); color: var(--text-primary); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; padding: 20px 24px 40px; }
+h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px; }
+.sub { color: var(--text-secondary); font-size: 13px; }
+.card { background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.filters { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 16px 0; }
+.filters label { color: var(--text-secondary); font-size: 12px; display: flex; gap: 6px; align-items: center; }
+select, input[type=search] { font: inherit; font-size: 13px; color: var(--text-primary); background: var(--surface-1); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; }
+input[type=search] { width: 220px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 12px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; cursor: pointer; background: var(--surface-1); color: var(--text-secondary); user-select: none; }
+.chip[aria-pressed=true] { color: var(--text-primary); border-color: var(--text-secondary); }
+.tiles { display: flex; gap: 12px; flex-wrap: wrap; }
+.tile { min-width: 140px; }
+.tile .k { color: var(--text-secondary); font-size: 12px; }
+.tile .v { font-size: 22px; font-weight: 600; }
+.card h2 { font-size: 13px; font-weight: 600; margin: 0 0 8px; }
+.card h2 .note { font-weight: 400; color: var(--muted); }
+#strip svg { display: block; width: 100%; }
+#strip text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+#strip .glabel { fill: var(--text-secondary); font-size: 12px; }
+.grid { stroke: var(--grid); stroke-width: 1; }
+.dot { fill: var(--series-1); fill-opacity: 0.8; stroke: var(--surface-1); stroke-width: 2; }
+.dot.sel { fill-opacity: 1; stroke: var(--text-primary); }
+.cols { display: grid; grid-template-columns: minmax(420px, 5fr) 7fr; gap: 16px; margin-top: 16px; align-items: start; }
+@media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
+.tablewrap { max-height: 78vh; overflow: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th { position: sticky; top: 0; background: var(--surface-1); text-align: left; font-weight: 600; color: var(--text-secondary); padding: 6px 8px; border-bottom: 1px solid var(--axis); cursor: pointer; white-space: nowrap; }
+th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; }
+th[aria-sort] { color: var(--text-primary); }
+td { padding: 5px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; white-space: nowrap; }
+td.prev { color: var(--text-secondary); max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+tr.row { cursor: pointer; }
+tr.row:hover { background: var(--hover); }
+tr.row.sel { background: var(--hover); box-shadow: inset 3px 0 0 var(--series-1); }
+#viewer { position: sticky; top: 12px; }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); margin-bottom: 8px; }
+.meta b { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+.legend { display: flex; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); margin: 6px 0 10px; flex-wrap: wrap; }
+.legend .sw { width: 26px; height: 12px; border-radius: 2px; border: 1px solid var(--border); }
+.legend .lab { margin: 0 8px 0 4px; }
+.text { white-space: pre-wrap; word-break: break-word; font: 12.5px/1.75 ui-monospace, SFMono-Regular, Menlo, monospace; max-height: 52vh; overflow: auto; padding: 8px; border: 1px solid var(--grid); border-radius: 6px; }
+.text span { border-radius: 2px; }
+.text .sp { color: var(--muted); font-style: italic; }
+.text .win { text-decoration: underline 2px var(--text-primary); text-underline-offset: 4px; }
+.text .flash { outline: 2px solid var(--text-primary); }
+.worst { margin-top: 10px; font-size: 12px; }
+.worst div { padding: 3px 6px; border-radius: 4px; cursor: pointer; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.worst div:hover { background: var(--hover); }
+.worst .val { display: inline-block; width: 52px; text-align: right; margin-right: 10px; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.worst .ctx { color: var(--text-secondary); }
+.worst .tgt { color: var(--text-primary); font-weight: 700; }
+.empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
+#tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface-1); color: var(--text-primary); border: 1px solid var(--border); border-radius: 6px; padding: 6px 9px; font-size: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.12); max-width: 380px; display: none; }
+#tip .k { color: var(--text-secondary); }
+#tip .num { font-variant-numeric: tabular-nums; }
+button.theme { font: inherit; font-size: 12px; background: none; border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary); padding: 3px 9px; cursor: pointer; float: right; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+  <button class="theme" id="theme">Toggle theme</button>
+  <h1 id="title"></h1>
+  <div class="sub" id="subtitle"></div>
+  <div class="filters card">
+    <label>Checkpoint <select id="rev"></select></label>
+    <label>Rank by <select id="metric"></select></label>
+    <label>Search <input type="search" id="q" placeholder="text or metadata"></label>
+    <div class="chips" id="groups"></div>
+  </div>
+  <div class="tiles" id="tiles"></div>
+  <div class="card" id="strip" style="margin-top:16px"><h2 id="striptitle"></h2><div id="stripsvg"></div></div>
+  <div class="cols">
+    <div class="card"><h2>Documents <span class="note" id="tablenote"></span></h2><div class="tablewrap"><table id="table"></table></div></div>
+    <div class="card" id="viewer"><div class="empty">Click a document (dot or row) to see its token-level losses.</div></div>
+  </div>
+  <div id="tip"></div>
+</div>
+<script>
+const D = /*__DATA__*/null;
+const LABEL = {mean: "Mean loss", win: `Worst ${D.window}-token window`, max: "Worst token",
+  d_mean: `Δ mean vs ${D.base}`, d_win: `Δ worst ${D.window}-window vs ${D.base}`, d_max: `Δ worst token vs ${D.base}`};
+const ABS_EDGES = [1, 2, 3, 4, 6, 8, 10, 13];           // nats -> --s1..--s8 (below 1: no fill)
+const DELTA_EDGES = [-4, -2, -0.5, 0.5, 2, 4];          // nats -> dn3 dn2 dn1 mid up1 up2 up3
+const DELTA_VARS = ["--dn3", "--dn2", "--dn1", "--d-mid", "--up1", "--up2", "--up3"];
+const groups = [...new Set(D.rows.map(r => r.group))].sort();
+const state = {rev: D.revisions[D.revisions.length - 1], metric: "win", groups: new Set(groups), q: "", sort: null, sel: null};
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const fmt = (x, d = 2) => x == null ? "–" : x.toFixed(d);
+const tip = $("tip");
+function showTip(html, ev) {
+  tip.innerHTML = html; tip.style.display = "block";
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.min(ev.clientX + 14, innerWidth - w - 8) + "px";
+  tip.style.top = (ev.clientY + 14 + h > innerHeight ? ev.clientY - h - 10 : ev.clientY + 14) + "px";
+}
+const hideTip = () => tip.style.display = "none";
+const score = (r, m = state.metric, rev = state.rev) => r.scores[rev][m];
+
+function visibleRows() {
+  const q = state.q.toLowerCase();
+  return D.rows.filter(r => state.groups.has(r.group) && score(r) != null &&
+    (!q || r.preview.toLowerCase().includes(q) || JSON.stringify(r.meta).toLowerCase().includes(q)));
+}
+
+function init() {
+  $("title").textContent = D.title;
+  $("subtitle").textContent = `${D.rows.length} documents · ${D.shape[0]} × ${D.shape[1]} tokens · ` +
+    `doc-boundary tokens excluded · token views embedded for the top documents of each metric`;
+  $("rev").innerHTML = D.revisions.map(r => `<option ${r === state.rev ? "selected" : ""}>${esc(r)}</option>`).join("");
+  $("metric").innerHTML = D.metrics.map(m => `<option value="${m}" ${m === state.metric ? "selected" : ""}>${esc(LABEL[m])}</option>`).join("");
+  $("groups").innerHTML = groups.length > 1 ? groups.map(g => `<span class="chip" role="button" tabindex="0" aria-pressed="true" data-g="${esc(g)}">${esc(g)}</span>`).join("") : "";
+  $("rev").onchange = e => { state.rev = e.target.value; render(); };
+  $("metric").onchange = e => { state.metric = e.target.value; state.sort = null; render(); };
+  $("q").oninput = e => { state.q = e.target.value; render(); };
+  $("groups").onclick = e => {
+    const g = e.target.dataset.g; if (g == null) return;
+    if (e.altKey || e.metaKey) { state.groups = new Set([g]); }       // alt/cmd-click: only this group
+    else state.groups.has(g) ? state.groups.delete(g) : state.groups.add(g);
+    document.querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", state.groups.has(c.dataset.g)));
+    render();
+  };
+  $("theme").onclick = () => {
+    const dark = getComputedStyle(document.querySelector(".viz-root")).colorScheme === "dark";
+    document.documentElement.dataset.theme = dark ? "light" : "dark"; render();
+  };
+  addEventListener("resize", () => drawStrip(visibleRows()));
+  render();
+}
+
+function render() {
+  const rows = visibleRows();
+  drawTiles(rows); drawStrip(rows); drawTable(rows); drawViewer();
+}
+
+function drawTiles(rows) {
+  const vals = rows.map(r => score(r)).sort((a, b) => a - b);
+  const top = rows.reduce((a, r) => (a == null || score(r) > score(a) ? r : a), null);
+  const med = vals.length ? vals[Math.floor(vals.length / 2)] : null;
+  $("tiles").innerHTML = [
+    ["Token-mean loss, " + state.rev, fmt(D.mean_loss[state.rev], 3) + " nats"],
+    ["Documents shown", rows.length],
+    ["Median " + LABEL[state.metric].toLowerCase(), fmt(med)],
+    ["Highest " + LABEL[state.metric].toLowerCase(), top ? `${fmt(score(top))} <span class="sub">(${esc(top.group)})</span>` : "–"],
+  ].map(([k, v]) => `<div class="card tile"><div class="k">${esc(k)}</div><div class="v">${v}</div></div>`).join("");
+}
+
+function niceTicks(lo, hi, n = 6) {
+  const step0 = (hi - lo) / n, p = Math.pow(10, Math.floor(Math.log10(step0)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * p).find(s => s >= step0);
+  const t = []; for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) t.push(+v.toFixed(6));
+  return t;
+}
+
+function drawStrip(rows) {
+  $("striptitle").innerHTML = `${esc(LABEL[state.metric])} per document, by ${esc(D.group_by)} <span class="note">· one dot per document · hover for preview, click to open</span>`;
+  const host = $("stripsvg"), W = host.clientWidth || 900;
+  if (!rows.length) { host.innerHTML = `<div class="empty">No documents match the filters.</div>`; return; }
+  const by = {}; rows.forEach(r => (by[r.group] ||= []).push(r));
+  const med = g => { const v = by[g].map(r => score(r)).sort((a, b) => a - b); return v[Math.floor(v.length / 2)]; };
+  const gs = Object.keys(by).sort((a, b) => med(b) - med(a));
+  const labelW = Math.min(170, 12 + 7 * Math.max(...gs.map(g => g.length + 6))), rowH = 30, top = 6, axisH = 26;
+  const vals = rows.map(r => score(r));
+  let lo = Math.min(0, ...vals), hi = Math.max(...vals); if (hi === lo) hi = lo + 1;
+  const ticks = niceTicks(lo, hi); lo = Math.min(lo, ticks[0]); hi = Math.max(hi, ticks[ticks.length - 1]);
+  const x = v => labelW + (v - lo) / (hi - lo) * (W - labelW - 16);
+  const H = top + gs.length * rowH + axisH;
+  const jitter = id => ((Math.sin(id * 12.9898) * 43758.5453) % 1) * 9;
+  let s = `<svg viewBox="0 0 ${W} ${H}" height="${H}" role="img" aria-label="${esc(LABEL[state.metric])} per document">`;
+  ticks.forEach(t => s += `<line class="grid" x1="${x(t)}" x2="${x(t)}" y1="${top}" y2="${top + gs.length * rowH}"/><text x="${x(t)}" y="${H - 8}" text-anchor="middle">${t}</text>`);
+  const pts = [];
+  gs.forEach((g, i) => {
+    const cy = top + i * rowH + rowH / 2;
+    s += `<text class="glabel" x="${labelW - 10}" y="${cy + 4}" text-anchor="end">${esc(g)} (${by[g].length})</text>`;
+    by[g].forEach(r => { const px = x(score(r)), py = cy + jitter(r.doc); pts.push([px, py, r]); });
+  });
+  pts.sort((a, b) => (a[2].doc === state.sel) - (b[2].doc === state.sel));
+  pts.forEach(([px, py, r]) => s += `<circle class="dot${r.doc === state.sel ? " sel" : ""}" cx="${px}" cy="${py}" r="${r.doc === state.sel ? 6 : 4.5}"/>`);
+  host.innerHTML = s + "</svg>";
+  const svg = host.querySelector("svg");
+  const nearest = ev => {
+    const b = svg.getBoundingClientRect(), mx = (ev.clientX - b.left) * W / b.width, my = (ev.clientY - b.top) * H / b.height;
+    let best = null, bd = 14 * 14;
+    for (const p of pts) { const d = (p[0] - mx) ** 2 + (p[1] - my) ** 2; if (d < bd) { bd = d; best = p[2]; } }
+    return best;
+  };
+  svg.onpointermove = ev => {
+    const r = nearest(ev); svg.style.cursor = r ? "pointer" : "default";
+    if (!r) return hideTip();
+    showTip(`<div><b>doc ${r.doc}</b> · ${esc(r.group)} · ${r.n_tokens} tokens</div>` +
+      `<div class="num"><span class="k">${esc(LABEL[state.metric])}:</span> ${fmt(score(r))}</div>` +
+      `<div class="k" style="margin-top:4px">${esc(r.preview.slice(0, 140))}…</div>`, ev);
+  };
+  svg.onpointerleave = hideTip;
+  svg.onclick = ev => { const r = nearest(ev); if (r) select(r.doc, true); };
+}
+
+function drawTable(rows) {
+  const metrics = D.metrics;
+  const key = state.sort || {k: state.metric, dir: -1};
+  const val = r => key.k === "n_tokens" ? r.n_tokens : key.k === "group" ? r.group : score(r, key.k);
+  rows = rows.slice().sort((a, b) => { const va = val(a), vb = val(b); return (va < vb ? -1 : va > vb ? 1 : 0) * key.dir; });
+  const LIMIT = 500;
+  $("tablenote").textContent = `· ${rows.length} shown${rows.length > LIMIT ? `, top ${LIMIT} listed` : ""} · ${state.rev} · click a header to sort`;
+  const th = (k, lab, num) => `<th class="${num ? "num" : ""}" data-k="${k}" ${key.k === k ? `aria-sort="${key.dir < 0 ? "descending" : "ascending"}"` : ""}>${esc(lab)}${key.k === k ? (key.dir < 0 ? " ↓" : " ↑") : ""}</th>`;
+  const short = {mean: "mean", win: `win${D.window}`, max: "max", d_mean: "Δmean", d_win: `Δwin${D.window}`, d_max: "Δmax"};
+  let h = `<thead><tr><th>#</th><th>doc</th>${th("group", D.group_by)}${th("n_tokens", "tokens", 1)}${metrics.map(m => th(m, short[m], 1)).join("")}<th>preview</th></tr></thead><tbody>`;
+  rows.slice(0, LIMIT).forEach((r, i) => {
+    h += `<tr class="row${r.doc === state.sel ? " sel" : ""}" data-doc="${r.doc}"><td class="num">${i + 1}</td><td class="num">${r.doc}${D.details[r.doc] ? "" : "<span title='no token view embedded'>°</span>"}</td><td>${esc(r.group)}</td><td class="num">${r.n_tokens}${r.truncated ? "✂" : ""}</td>` +
+      metrics.map(m => `<td class="num">${fmt(score(r, m))}</td>`).join("") + `<td class="prev" title="${esc(r.preview)}">${esc(r.preview)}</td></tr>`;
+  });
+  $("table").innerHTML = h + "</tbody>";
+  $("table").onclick = e => {
+    const t = e.target.closest("th[data-k]");
+    if (t) { const k = t.dataset.k; state.sort = {k, dir: key.k === k ? -key.dir : -1}; return drawTable(visibleRows()); }
+    const tr = e.target.closest("tr.row"); if (tr) select(+tr.dataset.doc, false);
+  };
+}
+
+function select(doc, scroll) {
+  state.sel = doc; render();
+  if (scroll) document.querySelector(`tr.row[data-doc="${doc}"]`)?.scrollIntoView({block: "nearest"});
+}
+
+function colorFor(v, delta) {
+  if (v == null) return "transparent";
+  if (delta) { let i = 0; while (i < DELTA_EDGES.length && v >= DELTA_EDGES[i]) i++; return `var(${DELTA_VARS[i]})`; }
+  let i = 0; while (i < ABS_EDGES.length && v >= ABS_EDGES[i]) i++; return i === 0 ? "transparent" : `var(--s${i})`;
+}
+
+function drawViewer() {
+  const host = $("viewer"), r = D.rows.find(r => r.doc === state.sel);
+  if (!r) return;
+  const det = D.details[r.doc];
+  const delta = state.metric.startsWith("d_");
+  const meta = Object.entries(r.meta).map(([k, v]) => `<span>${esc(k)}: <b>${esc(String(v))}</b></span>`).join("");
+  const scores = D.metrics.map(m => `<span>${esc(LABEL[m])}: <b>${fmt(score(r, m))}</b></span>`).join("");
+  let h = `<h2>doc ${r.doc} · ${esc(r.group)} · ${r.n_tokens} tokens${r.truncated ? " (cut by the eval-set length)" : ""}</h2><div class="meta">${meta}</div><div class="meta">${scores}</div>`;
+  if (!det) { host.innerHTML = h + `<div class="empty">No token view embedded for this document (it is not among the top documents of any metric). Rerun doc_report.py with a larger --detail.</div>`; return; }
+  const L = det.loss[state.rev], B = D.base ? det.loss[D.base] : null;
+  const vals = L.map((v, i) => delta ? (v == null || B[i] == null ? null : v - B[i]) : v);
+  const edges = delta ? DELTA_EDGES : ABS_EDGES;
+  const legend = delta
+    ? DELTA_VARS.map((c, i) => `<span class="sw" style="background:var(${c})"></span><span class="lab">${i === 0 ? "< " + edges[0] : i === DELTA_VARS.length - 1 ? "≥ " + edges[i - 1] : edges[i - 1] + "…" + edges[i]}</span>`).join("")
+    : ABS_EDGES.map((e, i) => `<span class="sw" style="background:var(--s${i + 1})"></span><span class="lab">${i === ABS_EDGES.length - 1 ? "≥ " + e : e + "…" + ABS_EDGES[i + 1]}</span>`).join("");
+  const [ws, we] = (det.worst[state.rev] || [-1, -1]);
+  h += `<div class="legend">${delta ? `Token loss change since ${esc(D.base)} (nats):` : `Token loss at ${esc(state.rev)} (nats, &lt; 1 unshaded):`}&nbsp; ${legend}<span class="lab">· underline = worst ${D.window}-token window</span></div>`;
+  if (det.offset > 0 || det.pieces.length < r.n_tokens) h += `<div class="sub" style="margin-bottom:6px">Showing tokens ${det.offset}–${det.offset + det.pieces.length} of ${r.n_tokens}, centred on the worst window.</div>`;
+  let t = "";
+  det.pieces.forEach((p, i) => {
+    const special = /^<[^<>\s]{1,30}>$/.test(p) || /^<\|[^|]+\|>$/.test(p);
+    const v = vals[i], bg = colorFor(v, delta), dark = !delta && v != null && v >= ABS_EDGES[4];
+    t += `<span data-i="${i}" class="${special ? "sp" : ""}${i >= ws && i < we ? " win" : ""}" style="background:${bg}${dark ? ";color:#fff" : ""}">${esc(p)}</span>`;
+  });
+  h += `<div class="text" id="toks">${t}</div>`;
+  const order = vals.map((v, i) => [v, i]).filter(([v]) => v != null).sort((a, b) => b[0] - a[0]).slice(0, 12);
+  h += `<div class="worst"><h2>${delta ? "Largest increases" : "Highest-loss tokens"} <span class="note">· preceding context → target · click to locate</span></h2>` +
+    order.map(([v, i]) => `<div data-i="${i}"><span class="val">${fmt(v)}</span><span class="ctx">${esc(det.pieces.slice(Math.max(0, i - 14), i).join("").replace(/\n/g, "⏎").slice(-70))}</span><span class="tgt">${esc(det.pieces[i].replace(/\n/g, "⏎"))}</span></div>`).join("") + `</div>`;
+  host.innerHTML = h;
+  const toks = $("toks");
+  toks.onmouseover = ev => {
+    const s = ev.target.closest("span[data-i]"); if (!s) return;
+    const i = +s.dataset.i;
+    let lines = D.revisions.map(rv => `<div class="num"><span class="k">${esc(rv)}:</span> ${fmt(det.loss[rv][i])} nats${det.loss[rv][i] != null ? ` · p = ${Math.exp(-det.loss[rv][i]).toExponential(1)}` : ""}</div>`).join("");
+    if (B) lines += `<div class="num"><span class="k">${esc(D.base)} (base):</span> ${fmt(B[i])} nats</div>`;
+    if (L[i] == null) lines += `<div class="k">no loss: first token of a packed sequence or a doc boundary</div>`;
+    showTip(`<div><b>${esc(JSON.stringify(det.pieces[i]))}</b> · token ${det.offset + i}</div>${lines}`, ev);
+  };
+  toks.onmouseleave = hideTip;
+  host.querySelector(".worst").onclick = ev => {
+    const d = ev.target.closest("div[data-i]"); if (!d) return;
+    const s = toks.querySelector(`span[data-i="${d.dataset.i}"]`);
+    s.scrollIntoView({block: "center", behavior: "smooth"}); s.classList.add("flash"); setTimeout(() => s.classList.remove("flash"), 1500);
+  };
+}
+init();
+</script>
+</body>
+</html>
