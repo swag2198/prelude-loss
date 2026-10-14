@@ -5,11 +5,13 @@ Each checkpoint is a branch of the HF repo (``iter_0124800`` = Megatron iteratio
 The eval text is tokenized once, packed into ``--seq-len`` sequences (docs joined by <eos>,
 as in pretraining) and cached, so every checkpoint sees exactly the same tokens.
 
-Outputs in ``--out``:
-  eval_tokens.pt            LongTensor [n_seqs, seq_len], the fixed eval set
-  docs.jsonl                one row per doc: [start, end) in the flattened tokens, plus its metadata
-  losses/<revision>.pt      float16 [n_seqs, seq_len - 1], per-token loss (nats)
-  summary.jsonl / .csv      one row per checkpoint: mean loss, perplexity, timings
+Outputs go to ``<results-root>/<model>/<dataset>/`` (or ``--out``):
+  eval_tokens.pt                    LongTensor [n_seqs, seq_len], the fixed eval set
+  docs.jsonl                        one row per doc: [start, end) in the flattened tokens, plus its metadata
+  eval_config.json                  data source, tokenizer, shape
+  checkpoints/<revision>/losses.pt  float16 [n_seqs, seq_len - 1], per-token loss (nats)
+  summary.jsonl / .csv              one row per checkpoint: mean loss, perplexity, timings
+<model> is the repo id with "/" -> "__"; <dataset> defaults to the source name plus the requested shape.
 """
 
 import argparse
@@ -35,7 +37,9 @@ WEIGHT_PATTERNS = ["*.json", "*.safetensors", "tokenizer.model"]
 def parse_args():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--repo", default="openeurollm/prelude")
-    p.add_argument("--out", type=Path, default=Path("prelude_sweep"))
+    p.add_argument("--results-root", type=Path, default=Path("results"))
+    p.add_argument("--dataset-name", help="default: derived from the data source and shape")
+    p.add_argument("--out", type=Path, help="explicit output dir; overrides <results-root>/<model>/<dataset>")
 
     sel = p.add_argument_group("checkpoint selection (main run, iter_* branches)")
     sel.add_argument("--every", type=int, default=48000, help="keep iterations divisible by this (checkpoints exist every 2400)")
@@ -58,9 +62,24 @@ def parse_args():
     run.add_argument("--batch-size", type=int, default=4)
     run.add_argument("--logit-chunk", type=int, default=1024, help="tokens per lm_head slice; bounds the 262k-vocab logits memory")
     run.add_argument("--device", default="cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
-    run.add_argument("--weights-dir", type=Path, help="where checkpoints are downloaded (default: <out>/weights)")
+    run.add_argument("--weights-dir", type=Path, help="where checkpoints are downloaded (default: <results-root>/_weights)")
     run.add_argument("--keep-weights", action="store_true", help="don't delete each checkpoint (~18 GB) after evaluating it")
-    return p.parse_args()
+    args = p.parse_args()
+    args.dataset_name = args.dataset_name or default_dataset_name(args)
+    args.out = args.out or args.results_root / slug(args.repo.replace("/", "__")) / slug(args.dataset_name)
+    return args
+
+
+def slug(name):
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
+
+
+def default_dataset_name(args):
+    if args.data:
+        source = args.data.stem
+    else:
+        source = f"{args.hf_dataset.split('/')[-1]}_{args.hf_config}" + ("" if args.hf_split == "train" else f"_{args.hf_split}")
+    return f"{source}_{args.num_seqs}x{args.seq_len}"
 
 
 def select_revisions(args):
@@ -134,7 +153,7 @@ def load_eval_tokens(args, revision):
         f.writelines(json.dumps(d) + "\n" for d in docs)
     source = str(args.data) if args.data else f"{args.hf_dataset}/{args.hf_config}:{args.hf_split}"
     (args.out / "eval_config.json").write_text(json.dumps(
-        {"source": source, "repo": args.repo, "tokenizer_revision": revision, "shape": list(tokens.shape),
+        {"source": source, "dataset_name": args.dataset_name, "repo": args.repo, "tokenizer_revision": revision, "shape": list(tokens.shape),
          "n_docs": len(docs)}, indent=2))
     print(f"built {path} from {source}: {tuple(tokens.shape)}")
     return tokens
@@ -175,12 +194,12 @@ def main():
     args = parse_args()
     revisions = select_revisions(args)
     print(f"{len(revisions)} revisions: {' '.join(revisions)}")
+    print(f"results in {args.out}")
     if args.dry_run:
         return
 
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "losses").mkdir(exist_ok=True)
-    weights_dir = args.weights_dir or args.out / "weights"
+    weights_dir = args.weights_dir or args.results_root / "_weights"
     summary_path = args.out / "summary.jsonl"
     done = {json.loads(line)["revision"] for line in open(summary_path)} if summary_path.exists() else set()
     todo = [r for r in revisions if r not in done]
@@ -210,7 +229,9 @@ def main():
         if args.device == "cuda":
             torch.cuda.empty_cache()
 
-        torch.save(losses.half(), args.out / "losses" / f"{revision}.pt")
+        ckpt_dir = args.out / "checkpoints" / revision
+        ckpt_dir.mkdir(parents=True, exist_ok=True)
+        torch.save(losses.half(), ckpt_dir / "losses.pt")
         m = ANY_ITER_RE.search(revision)
         mean = losses.mean().item()
         row = {

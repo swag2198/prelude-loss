@@ -12,7 +12,7 @@ Each checkpoint is a branch of the HF repo (`iter_0124800` = iteration 124,800; 
 
 ```bash
 # laptop: copy the code over (port/IP from the pod's "Connect" panel)
-scp -P <POD_PORT> sweep_loss.py requirements.txt root@<POD_IP>:/workspace/
+scp -P <POD_PORT> -r sweep_loss.py requirements.txt analysis dashboard root@<POD_IP>:/workspace/
 
 # pod
 cd /workspace
@@ -20,7 +20,7 @@ export HF_HOME=/workspace/hf          # keep caches on the volume, not the conta
 pip install -r requirements.txt
 python sweep_loss.py --dry-run        # check which checkpoints will be evaluated
 tmux new -s sweep                     # survives SSH disconnects
-python sweep_loss.py --out /workspace/prelude_sweep
+python sweep_loss.py --results-root /workspace/results
 ```
 
 The run is resumable: re-running the same command skips checkpoints already in `summary.jsonl`.
@@ -34,7 +34,7 @@ python sweep_loss.py --every 2400 --start 400000 --end 450000   # every checkpoi
 python sweep_loss.py --revisions iter_0480000 anneal300b_iter_0989075   # any branches, incl. anneal/wsm
 ```
 
-Use the same `--out` for several selections to collect them into one `summary.csv`.
+Selections with the same model and eval text land in the same results dir, so their rows collect into one `summary.csv`.
 
 ## Eval text
 
@@ -46,34 +46,50 @@ python sweep_loss.py --hf-dataset HuggingFaceFW/fineweb-2 --hf-config fra_Latn
 python sweep_loss.py --num-seqs 1024                    # ~4M tokens
 ```
 
-The tokens are cached in `<out>/eval_tokens.pt` on the first run and reused after that, so every checkpoint sees identical input. To change the text, use a new `--out` (or delete that file).
+The tokens are cached in the results dir on the first run and reused after that, so every checkpoint sees identical input. Different text (source or shape) gets its own results dir automatically.
 
-## Outputs (`--out`)
+## Layout
+
+```
+analysis/doc_scores.py        per-document metrics from a results dir
+dashboard/build_dashboard.py  HTML dashboards from the analysis outputs (dashboard/template.html)
+results/                      all outputs; not committed
+  <model>/                    repo id with "/" -> "__", e.g. openeurollm__prelude
+    <dataset>/                source + requested shape, e.g. fineweb-edu_sample-10BT_256x4096 (or --dataset-name)
+      eval_tokens.pt  docs.jsonl  eval_config.json  summary.csv  summary.jsonl
+      checkpoints/<revision>/losses.pt
+      analysis/<revision>[_vs_<base>]/doc_scores.csv  details.json
+      dashboard/<revision>[_vs_<base>].html
+```
+
+`--out` overrides `<results-root>/<model>/<dataset>`. Checkpoint weights are downloaded to `<results-root>/_weights` and deleted after evaluation.
 
 | File | Contents |
 |---|---|
 | `summary.csv` / `summary.jsonl` | one row per checkpoint: `mean_loss`, `ppl`, `n_tokens`, timings |
-| `losses/<revision>.pt` | float16 `[n_seqs, seq_len-1]` per-token loss in nats; position `j` is the loss of predicting token `j+1` |
+| `checkpoints/<revision>/losses.pt` | float16 `[n_seqs, seq_len-1]` per-token loss in nats; position `j` is the loss of predicting token `j+1` |
 | `eval_tokens.pt` | int64 `[n_seqs, seq_len]` eval tokens |
-| `eval_config.json` | data source and shape |
+| `docs.jsonl` | each document's `[start, end)` in the flattened `eval_tokens.pt` plus its metadata (every other short field of the input row, e.g. `category`) |
+| `eval_config.json` | data source, dataset name, tokenizer, shape |
 
-`docs.jsonl` records each document's `[start, end)` in the flattened `eval_tokens.pt` plus its metadata (every other short field of the input row, e.g. `category`), so losses can be traced back to documents.
-
-## Ranking documents (`doc_report.py`)
+## Ranking documents and dashboards
 
 ```bash
-python doc_report.py --out prelude_sweep                           # every checkpoint in losses/
-python doc_report.py --out prelude_sweep --base iter_0432000       # also rank by loss increase since iter_0432000
+R=results/openeurollm__prelude/fineweb-edu_sample-10BT_256x4096
+python analysis/doc_scores.py --dir $R                         # every checkpoint
+python analysis/doc_scores.py --dir $R --base iter_0432000     # also rank by loss increase since iter_0432000
+python dashboard/build_dashboard.py --dir $R                   # one HTML per analysis
 ```
 
-Per document and checkpoint: `mean` loss, `win` (worst `--window`-token mean, default 32) and `max` (worst token); with `--base`, the same on the per-token change (`d_mean`, `d_win`, `d_max`). Each document's first token (and the one after `<bos>`) is excluded, since it only measures the document boundary. Writes `<out>/doc_scores.csv` and `<out>/dashboard.html` (self-contained: strip plot per `--group-by` field, sortable table, token-level loss view of the top `--detail` documents per metric).
+Per document: `mean` loss, `win` (worst `--window`-token mean, default 32) and `max` (worst token); with `--base`, the same on the per-token change (`d_mean`, `d_win`, `d_max`). Each document's first token (and the one after `<bos>`) is excluded, since it only measures the document boundary. A dashboard is a single self-contained HTML file: a strip plot per `--group-by` field, a sortable table, and a token-level loss view of the top `--detail` documents per metric.
 
 To test the pipeline without a GPU, any Qwen3 model works in place of Prelude, e.g. `--repo Qwen/Qwen3-0.6B-Base --revisions main`.
 
 ```python
 import torch
-tokens = torch.load("prelude_sweep/eval_tokens.pt")
-a = torch.load("prelude_sweep/losses/iter_0432000.pt").float()
-b = torch.load("prelude_sweep/losses/iter_0480000.pt").float()
+R = "results/openeurollm__prelude/fineweb-edu_sample-10BT_256x4096"
+tokens = torch.load(f"{R}/eval_tokens.pt")
+a = torch.load(f"{R}/checkpoints/iter_0432000/losses.pt").float()
+b = torch.load(f"{R}/checkpoints/iter_0480000/losses.pt").float()
 worst = (b - a).flatten().topk(20)   # tokens whose loss rose the most between the two steps
 ```

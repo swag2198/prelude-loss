@@ -140,6 +140,7 @@ function init() {
   $("title").textContent = D.title;
   $("subtitle").textContent = `${D.rows.length} documents · ${D.shape[0]} × ${D.shape[1]} tokens · ` +
     `doc-boundary tokens excluded · token views embedded for the top documents of each metric`;
+  if (D.revisions.length < 2) $("rev").parentElement.style.display = "none";
   $("rev").innerHTML = D.revisions.map(r => `<option ${r === state.rev ? "selected" : ""}>${esc(r)}</option>`).join("");
   $("metric").innerHTML = D.metrics.map(m => `<option value="${m}" ${m === state.metric ? "selected" : ""}>${esc(LABEL[m])}</option>`).join("");
   $("groups").innerHTML = groups.length > 1 ? groups.map(g => `<span class="chip" role="button" tabindex="0" aria-pressed="true" data-g="${esc(g)}">${esc(g)}</span>`).join("") : "";
@@ -257,7 +258,7 @@ function select(doc, scroll) {
 
 function colorFor(v, delta) {
   if (v == null) return "transparent";
-  if (delta) { let i = 0; while (i < DELTA_EDGES.length && v >= DELTA_EDGES[i]) i++; return `var(${DELTA_VARS[i]})`; }
+  if (delta) { let i = 0; while (i < DELTA_EDGES.length && v >= DELTA_EDGES[i]) i++; return i === 3 ? "transparent" : `var(${DELTA_VARS[i]})`; }
   let i = 0; while (i < ABS_EDGES.length && v >= ABS_EDGES[i]) i++; return i === 0 ? "transparent" : `var(--s${i})`;
 }
 
@@ -277,7 +278,7 @@ function drawViewer() {
     ? DELTA_VARS.map((c, i) => `<span class="sw" style="background:var(${c})"></span><span class="lab">${i === 0 ? "< " + edges[0] : i === DELTA_VARS.length - 1 ? "≥ " + edges[i - 1] : edges[i - 1] + "…" + edges[i]}</span>`).join("")
     : ABS_EDGES.map((e, i) => `<span class="sw" style="background:var(--s${i + 1})"></span><span class="lab">${i === ABS_EDGES.length - 1 ? "≥ " + e : e + "…" + ABS_EDGES[i + 1]}</span>`).join("");
   const [ws, we] = (det.worst[state.rev] || [-1, -1]);
-  h += `<div class="legend">${delta ? `Token loss change since ${esc(D.base)} (nats):` : `Token loss at ${esc(state.rev)} (nats, &lt; 1 unshaded):`}&nbsp; ${legend}<span class="lab">· underline = worst ${D.window}-token window</span></div>`;
+  h += `<div class="legend">${delta ? `Token loss change since ${esc(D.base)} (nats, −0.5…0.5 unshaded):` : `Token loss at ${esc(state.rev)} (nats, &lt; 1 unshaded):`}&nbsp; ${legend}<span class="lab">· underline = worst ${D.window}-token window</span></div>`;
   if (det.offset > 0 || det.pieces.length < r.n_tokens) h += `<div class="sub" style="margin-bottom:6px">Showing tokens ${det.offset}–${det.offset + det.pieces.length} of ${r.n_tokens}, centred on the worst window.</div>`;
   let t = "";
   det.pieces.forEach((p, i) => {

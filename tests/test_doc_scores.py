@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from doc_report import boundary_mask, flat_losses, span_metrics, token_pieces  # noqa: E402
+from analysis.doc_scores import boundary_mask, flat_losses, span_metrics, token_pieces  # noqa: E402
 from sweep_loss import build_eval_tokens  # noqa: E402
 
 
@@ -61,3 +61,12 @@ def test_span_metrics_ignores_nan_and_finds_worst_window():
 def test_token_pieces_concatenate_to_text():
     ids = [1, 104, 105, 2]
     assert token_pieces(CharTokenizer(), ids) == ["<bos>", "h", "i", "<eos>"]
+
+
+def test_default_dataset_name_and_slug():
+    from sweep_loss import default_dataset_name, slug
+    hf = Namespace(data=None, hf_dataset="HuggingFaceFW/fineweb-edu", hf_config="sample-10BT", hf_split="train", num_seqs=256, seq_len=4096)
+    assert default_dataset_name(hf) == "fineweb-edu_sample-10BT_256x4096"
+    local = Namespace(data=Path("x/mixed-docs.jsonl"), num_seqs=8, seq_len=2048)
+    assert default_dataset_name(local) == "mixed-docs_8x2048"
+    assert slug("openeurollm/prelude".replace("/", "__")) == "openeurollm__prelude"
