@@ -1,0 +1,6 @@
+# torch comes from the RunPod PyTorch image; checkpoints were converted with transformers 5.3
+transformers>=5.3
+accelerate
+datasets
+huggingface_hub
+hf_xet
