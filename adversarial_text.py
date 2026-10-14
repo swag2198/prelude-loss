@@ -95,6 +95,26 @@ def gen_repetitive() -> str:
     return " ".join(["cheap flights", "best flights", "flights deals"] * random.randint(30, 100))
 
 
+RARE_WORDS = [
+    "xylophonic", "quetzalcoatl", "chthonic", "syzygy", "ptarmigan",
+    "zygomorphic", "vermiculite", "phthalocyanine", "gnathostome", "crwth",
+]
+
+
+def gen_repetitive_rare() -> str:
+    # Rare tokens are split into rare subword pieces by the tokenizer, so each repeat is a
+    # high-loss sequence that the model sees many times in one document.
+    kind = random.choice(["rare_word", "rare_unicode", "rare_mixed"])
+    if kind == "rare_word":
+        word = random.choice(RARE_WORDS)
+        return " ".join([word] * random.randint(100, 400))
+    if kind == "rare_unicode":  # CJK extension B, Cuneiform, Mathematical Alphanumeric
+        ch = chr(random.choice([random.randint(0x20000, 0x2A6DF), random.randint(0x12000, 0x123FF), random.randint(0x1D400, 0x1D7FF)]))
+        return ch * random.randint(300, 1500)
+    return " ".join(random.choice(RARE_WORDS) + random.choice(["", "̱", chr(random.randint(0x2E80, 0x2EFF))])
+                    for _ in range(random.randint(100, 400)))
+
+
 # --- 4. Structured or non-linguistic data -----------------------------------------------------
 
 def gen_structured() -> str:
@@ -146,6 +166,7 @@ ADV_GENERATORS = {
     "high-entropy": gen_high_entropy,
     "encoding-garbage": gen_encoding_garbage,
     "repetitive": gen_repetitive,
+    "repetitive-rare": gen_repetitive_rare,
     "structured": gen_structured,
     "distribution-shift": gen_distribution_shift,
     "pipeline-bug": gen_pipeline_bug,
